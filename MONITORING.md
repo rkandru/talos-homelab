@@ -1,0 +1,124 @@
+# MONITORING — Talos + Kubernetes metrics → Grafana Cloud
+
+Set up on 2026-07-09. Metrics only (no logs/traces yet). Destination is the
+Grafana Cloud stack **rahulkandru.grafana.net** (Prometheus/Mimir endpoint
+`prometheus-prod-43-prod-ap-south-1`, instance ID `2838151`).
+
+## Architecture
+
+No Prometheus or Grafana runs in the cluster. **Grafana Alloy** (deployed by
+Grafana's `k8s-monitoring` Helm chart v4.2.1, managed as the `monitoring` Argo
+CD app) scrapes everything locally and remote-writes to Grafana Cloud:
+
+```
+node-exporter (DaemonSet, all nodes)  ─┐
+kube-state-metrics (Deployment)       ─┤
+kubelet + cAdvisor (:10250, mTLS)     ─┼→ Alloy (alloy-metrics) ─remote_write→ Grafana Cloud
+kube-apiserver (:6443)                ─┤
+etcd (:2381, Talos system service)    ─┘
+```
+
+Chart values: `monitoring/values.yaml`. Extra scrape targets:
+`manifests/monitoring/`. The chart also deploys the Alloy operator, which owns
+the `alloy-metrics` StatefulSet via an `Alloy` custom resource.
+
+## What is monitored and why
+
+Coverage follows OneUptime's Talos monitoring series
+([overview](https://oneuptime.com/blog/post/2026-03-03-monitor-kubernetes-cluster-metrics-on-talos-linux/view),
+[Prometheus on Talos](https://oneuptime.com/blog/post/2026-03-03-monitor-talos-linux-with-prometheus/view),
+[etcd](https://oneuptime.com/blog/post/2026-03-03-monitor-etcd-performance-in-talos-linux/view)):
+
+| Layer | Source | Key metrics to watch |
+|---|---|---|
+| **Talos machine** | node-exporter (9100) | CPU, memory pressure `1 - MemAvailable/MemTotal`, disk usage/IO, network throughput |
+| **etcd** (Talos service) | etcd metrics (2381) | `etcd_disk_wal_fsync_duration_seconds` P99 < 10ms, leader changes < 3/h, DB size, failed proposals |
+| **API server** | apiserver (6443) | request latency + rates, error ratio |
+| **Kubelet/runtime** | kubelet + cAdvisor (10250) | container CPU/mem vs requests, throttling |
+| **K8s object state** | kube-state-metrics | pod restarts `increase(kube_pod_container_status_restarts_total[1h])`, OOM kills, node readiness, deployment replica drift |
+
+Talos itself (machined/apid) exposes no Prometheus endpoint; machine-level
+health beyond node-exporter comes from `talosctl health` / `talosctl dmesg`
+(spot checks), which is consistent with what the OneUptime posts recommend.
+
+## Talos-specific plumbing this needed
+
+1. **etcd metrics endpoint** — etcd is a Talos-managed system service, not a
+   pod. Machine config patch (in `talos/patches/cluster.yaml`, also applied
+   live with `talosctl -n 10.5.0.2 patch machineconfig`):
+   ```yaml
+   cluster:
+     etcd:
+       extraArgs:
+         listen-metrics-urls: http://0.0.0.0:2381
+   ```
+   Because there's no pod, discovery uses a selector-less Service + manual
+   Endpoints (`manifests/monitoring/etcd-metrics.yaml`) annotated with
+   `k8s.grafana.com/scrape: "true"`, picked up by Alloy's annotation
+   autodiscovery.
+2. **Privileged namespace** — node-exporter needs `hostPID` and hostPath
+   mounts of `/proc`,`/sys`; Talos enforces PSA `baseline` cluster-wide, so
+   the `monitoring` namespace is labeled
+   `pod-security.kubernetes.io/enforce: privileged` (managed by the Argo app's
+   `managedNamespaceMetadata`).
+3. **Control-plane node metrics** — the control plane is tainted; the
+   node-exporter DaemonSet gets `tolerations: [{operator: Exists, effect:
+   NoSchedule}]` so machine metrics cover it too.
+
+## Credentials
+
+The write credential is a Grafana Cloud access-policy token
+(`metrics:write` scope only) stored in the `grafana-cloud-metrics` Secret in
+the `monitoring` namespace — **never committed**. Recreate after a cluster
+rebuild:
+
+```sh
+kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+kubectl label ns monitoring pod-security.kubernetes.io/enforce=privileged --overwrite
+kubectl -n monitoring create secret generic grafana-cloud-metrics \
+  --from-literal=username=2838151 \
+  --from-literal=password='<glc_... token>' \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Rotate by generating a new token at grafana.com (Access Policies) and
+re-running the secret command. Note: the current token was pasted in a chat
+session — rotate it when convenient.
+
+## Where to look in Grafana Cloud
+
+- **Dashboards → Kubernetes Monitoring** (Infrastructure → Kubernetes): the
+  chart emits exactly the metric/label set these built-in views expect —
+  cluster, node, namespace, and workload drill-downs.
+- **Explore** with the `grafanacloud-rahulkandru-prom` datasource; useful
+  starters:
+  - `up{cluster="homelab"}` — every scrape target's liveness, in one query
+  - `etcd_disk_wal_fsync_duration_seconds{cluster="homelab"}` P99:
+    `histogram_quantile(0.99, sum(rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])) by (le))`
+  - `node_memory_MemAvailable_bytes{cluster="homelab"}`
+  - `increase(kube_pod_container_status_restarts_total{cluster="homelab"}[1h])`
+
+## Issues hit during this setup & fixes
+
+1. **etcd ignored the config patch until restarted.** `talosctl patch
+   machineconfig` reported "applied without a reboot", but etcd kept running
+   with its old flags, and `talosctl service etcd restart` is refused
+   ("doesn't support restart operation via API"). *Fix*: `docker restart
+   homelab-controlplane-1` — in Docker mode a container restart is the
+   equivalent of a node reboot; etcd came back with
+   `listen-metrics-urls=http://0.0.0.0:2381`.
+2. **False "no metrics" scare.** The first verification curl via `kubectl run
+   --rm -i` printed nothing — output-streaming raced pod deletion. Running the
+   pod without `-i` and reading `kubectl logs` showed the metrics were there
+   all along. Lesson: don't trust `kubectl run --rm -i` output for
+   verification.
+3. **Chart validation: annotation autodiscovery requires clustering.**
+   `helm template` failed with "requires clustering to be enabled on the
+   alloy-metrics collector". *Fix*: `collectors.alloy-metrics.presets:
+   [clustered]`.
+4. **Chart v4 values restructure.** `clusterMetrics.kube-state-metrics.deploy`
+   / `node-exporter.deploy` (the v2/v3 layout most docs show) no longer
+   deploys the exporters — v4 moved deployment control to a top-level
+   `telemetryServices:` map. The chart's own validation error message pointed
+   at the new location. Rendering locally with `helm template` before pushing
+   caught both this and issue 3 without touching the cluster.

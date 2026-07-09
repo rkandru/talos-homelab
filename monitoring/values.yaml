@@ -27,6 +27,11 @@ clusterMetrics:
   apiServer:
     enabled: true
 
+# Scrapes node-exporter (deployed below). In chart v4 this is a separate
+# feature from clusterMetrics — without it node-exporter runs unscraped.
+hostMetrics:
+  enabled: true
+
 # v4 splits exporter *deployment* out from the scrape config above.
 telemetryServices:
   kube-state-metrics:
