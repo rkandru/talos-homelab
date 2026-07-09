@@ -137,7 +137,11 @@ session — rotate it when convenient.
    Alloy's scrape pools showed apiserver/kubelet/cAdvisor/kube-state-metrics/
    etcd — but no node-exporter, even though its DaemonSet was running. In
    chart v4, scraping node-exporter is a *separate feature* (`hostMetrics:`),
-   not part of `clusterMetrics`. *Fix*: `hostMetrics.enabled: true`. Caught by
+   not part of `clusterMetrics` — and enabling the feature alone renders an
+   *empty* pipeline (`sources="%!s(<nil>)"` in the render); its source must
+   also be turned on. *Fix*: `hostMetrics: {enabled: true, linuxHosts:
+   {enabled: true}}`, verified by `helm template` showing
+   `prometheus.scrape "node_exporter"` before pushing. Caught by
    checking `prometheus_target_scrape_pool_targets` on Alloy's own :12345
    metrics endpoint — worth doing after any chart change, since a missing
    scrape pool produces no error anywhere.
