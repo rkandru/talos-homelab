@@ -95,9 +95,21 @@ session — rotate it when convenient.
 
 ## Where to look in Grafana Cloud
 
+- **Dashboards → Talos Homelab** (uid `talos-homelab`): custom dashboard,
+  source-controlled at `grafana/dashboards/talos-homelab.json` and pushed via
+  the Grafana API. Overview stats, Talos machine (CPU/memory/disk/network),
+  etcd (WAL fsync p99 vs the 10ms line, proposals, DB size, leader changes),
+  plus a collapsed Kubernetes row that populates when the K8s toggle is on.
+  To update: edit the JSON (or regenerate) and POST it with a service-account
+  token: `curl -X POST -H "Authorization: Bearer $(cat ~/.grafana-sa-token)"
+  -H 'Content-Type: application/json'
+  https://rahulkandru.grafana.net/api/dashboards/db
+  -d "{\"dashboard\": $(cat grafana/dashboards/talos-homelab.json),
+  \"overwrite\": true}"`
 - **Dashboards → Kubernetes Monitoring** (Infrastructure → Kubernetes): the
-  chart emits exactly the metric/label set these built-in views expect —
-  cluster, node, namespace, and workload drill-downs.
+  chart emits the metric/label set these built-in views expect — but only
+  once the K8s metrics toggle is on. Note the cluster label is
+  `talos-homelab` (the leftover Docker Desktop sender squats on `homelab`).
 - **Explore** with the `grafanacloud-rahulkandru-prom` datasource; useful
   starters:
   - `up{cluster="homelab"}` — every scrape target's liveness, in one query
