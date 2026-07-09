@@ -4,6 +4,14 @@ Set up on 2026-07-09. Metrics only (no logs/traces yet). Destination is the
 Grafana Cloud stack **rahulkandru.grafana.net** (Prometheus/Mimir endpoint
 `prometheus-prod-43-prod-ap-south-1`, instance ID `2838151`).
 
+> **Current mode: Talos metrics only** (node-exporter machine metrics + etcd).
+> Kubernetes metrics (kubelet, cAdvisor, kube-state-metrics, API server) are
+> configured but switched off to stay inside the stack's 15,000 active-series
+> limit, which is shared with two other senders on this account (see issue 7).
+> To switch K8s metrics on: in `monitoring/values.yaml` set
+> `clusterMetrics.enabled: true` and
+> `telemetryServices.kube-state-metrics.deploy: true`, then commit + push.
+
 ## Architecture
 
 No Prometheus or Grafana runs in the cluster. **Grafana Alloy** (deployed by
@@ -145,3 +153,21 @@ session — rotate it when convenient.
    checking `prometheus_target_scrape_pool_targets` on Alloy's own :12345
    metrics endpoint — worth doing after any chart change, since a missing
    scrape pool produces no error anywhere.
+7. **Remote write stalled: shared active-series limit.** ~30 min after
+   setup, Alloy's `highest_sent_timestamp` froze and
+   `samples_retried_total` climbed while `samples_failed_total` stayed 0.
+   Logs showed the cause:
+   `429 ... tenant exceeded the active series limit, set to 15000`.
+   The stack turned out to have **two other active senders** from an earlier
+   Grafana Cloud onboarding: the k8s-monitoring chart v3.7.3 (with Kepler and
+   OpenCost — both series-hungry) running in Docker Desktop's built-in
+   Kubernetes (`desktop-*` nodes, also labeled `cluster="homelab"`!), and a
+   brew-installed Alloy on the Mac itself pushing host metrics. *Resolution
+   chosen*: keep the other senders, trim this cluster to Talos-only metrics
+   (the toggle at the top of this file), and restart the Alloy pod to drop
+   the WAL backlog of buffered K8s samples. Lessons: `failed=0` doesn't mean
+   delivery is healthy (429s retry forever, silently); and check
+   `count by (job) (up)` for *unexpected* senders before trusting a
+   shared-tenant stack. Beware the `desktop-*` cluster shares the
+   `cluster="homelab"` label — filter dashboards by `instance=~"homelab.*"`
+   or job where it matters.
