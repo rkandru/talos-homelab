@@ -11,5 +11,11 @@ fi
 docker start ${CONTAINERS}
 
 echo "Waiting for Kubernetes API and nodes..."
+# The apiserver takes ~30s to come back; kubectl wait aborts on connection
+# errors, so poll until the API answers before waiting on node readiness.
+for _ in $(seq 1 60); do
+  kubectl get --raw /readyz >/dev/null 2>&1 && break
+  sleep 5
+done
 kubectl wait --for=condition=Ready nodes --all --timeout=300s
 echo "Cluster '${CLUSTER_NAME}' resumed."
