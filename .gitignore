@@ -1,0 +1,9 @@
+# Never commit cluster credentials or secrets
+kubeconfig*
+talosconfig*
+*.kubeconfig
+secrets.yaml
+secrets/
+*.pem
+*.key
+.env

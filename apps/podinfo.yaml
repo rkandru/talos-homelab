@@ -1,0 +1,26 @@
+# Demo app proving the GitOps loop: edit replicaCount here, push, and
+# watch Argo CD reconcile it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: podinfo
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://stefanprodan.github.io/podinfo
+    chart: podinfo
+    targetRevision: 6.14.0
+    helm:
+      releaseName: podinfo
+      valuesObject:
+        replicaCount: 1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

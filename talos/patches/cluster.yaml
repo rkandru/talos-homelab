@@ -1,0 +1,8 @@
+# Machine-config patch applied to all nodes at cluster create time.
+# Cilium replaces both the default CNI (Flannel) and kube-proxy.
+cluster:
+  network:
+    cni:
+      name: none
+  proxy:
+    disabled: true

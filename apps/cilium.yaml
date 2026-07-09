@@ -1,0 +1,28 @@
+# Adopts the Cilium release installed by scripts/cluster-up.sh so that
+# version bumps and value changes are GitOps-managed from here on.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cilium
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://helm.cilium.io
+      chart: cilium
+      targetRevision: 1.19.5
+      helm:
+        releaseName: cilium
+        valueFiles:
+          - $values/cilium/values.yaml
+    - repoURL: https://github.com/rkandru/talos-homelab.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

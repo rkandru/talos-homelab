@@ -1,0 +1,40 @@
+# Argo CD values. Chart: argo/argo-cd, pinned in apps/argocd.yaml.
+# Access is via `kubectl port-forward` only -- no Ingress/LoadBalancer,
+# nothing exposed beyond localhost.
+
+dex:
+  enabled: false            # no SSO; local admin user only
+
+notifications:
+  enabled: false            # not needed yet
+
+applicationSet:
+  enabled: false            # app-of-apps uses plain Applications
+
+configs:
+  params:
+    server.insecure: false  # keep TLS on the server, even behind port-forward
+
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+server:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+repoServer:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi

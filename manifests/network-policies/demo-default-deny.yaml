@@ -1,0 +1,11 @@
+# Default-deny ingress for everything in the demo namespace.
+# Enforced by Cilium (the default Flannel CNI would silently ignore this).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: demo
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
