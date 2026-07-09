@@ -3,8 +3,11 @@
 # The write credential lives in the grafana-cloud-metrics Secret (NOT in git);
 # see MONITORING.md for how to (re)create it.
 
+# "talos-homelab", not "homelab": another (leftover) sender on this Grafana
+# Cloud account pushes cluster="homelab" from Docker Desktop's built-in k8s,
+# and the label must distinguish the two.
 cluster:
-  name: homelab
+  name: talos-homelab
 
 destinations:
   grafanaCloudMetrics:
