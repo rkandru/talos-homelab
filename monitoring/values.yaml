@@ -19,18 +19,24 @@ destinations:
       name: grafana-cloud-metrics
       namespace: monitoring
 
-# Kubernetes metrics: kubelet, cAdvisor, kube-state-metrics, node-exporter
-# (node-exporter doubles as the Talos "machine metrics" source — OneUptime's
-# node-level CPU/memory/disk/network recommendations all come from it).
+# ============================================================
+# K8S METRICS TOGGLE — currently OFF to stay inside the Grafana
+# Cloud free-tier active-series limit (15k, shared with other
+# senders on this account). To re-enable Kubernetes metrics
+# (kubelet, cAdvisor, kube-state-metrics, API server):
+#   1. clusterMetrics.enabled: true
+#   2. telemetryServices.kube-state-metrics.deploy: true
+#   3. commit + push; Argo CD does the rest
+# ============================================================
 clusterMetrics:
-  enabled: true
+  enabled: false
   apiServer:
     enabled: true
 
-# Scrapes node-exporter (deployed below). In chart v4 this is a separate
-# feature from clusterMetrics — without it node-exporter runs unscraped,
-# and the linuxHosts source must be enabled explicitly or the feature
-# renders empty.
+# TALOS METRICS (always on): node-exporter machine metrics — OneUptime's
+# node-level CPU/memory/disk/network recommendations all come from it.
+# In chart v4 this is a separate feature from clusterMetrics, and the
+# linuxHosts source must be enabled explicitly or the feature renders empty.
 hostMetrics:
   enabled: true
   linuxHosts:
@@ -39,7 +45,8 @@ hostMetrics:
 # v4 splits exporter *deployment* out from the scrape config above.
 telemetryServices:
   kube-state-metrics:
-    deploy: true
+    deploy: false   # part of the K8s metrics toggle above
+
   node-exporter:
     deploy: true
     # Talos control-plane nodes are tainted; we want machine metrics from
