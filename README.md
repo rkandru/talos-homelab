@@ -11,7 +11,9 @@ Homelab only — no critical workloads.
   Cilium 1.19.5, Argo CD chart 10.1.2 (v3.4.4), podinfo 6.14.0
 
 See [NOTES.md](NOTES.md) for how the cluster bootstraps under the hood
-(PKI/certs, control-plane bring-up order, Cilium internals).
+(PKI/certs, control-plane bring-up order, Cilium internals), and
+[MONITORING.md](MONITORING.md) for the metrics pipeline to Grafana Cloud
+(what's monitored, why, credentials, issues log).
 
 ## Layout
 

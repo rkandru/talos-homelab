@@ -122,3 +122,11 @@ session — rotate it when convenient.
    `telemetryServices:` map. The chart's own validation error message pointed
    at the new location. Rendering locally with `helm template` before pushing
    caught both this and issue 3 without touching the cluster.
+5. **node-exporter deployed but silently unscraped.** After the first sync,
+   Alloy's scrape pools showed apiserver/kubelet/cAdvisor/kube-state-metrics/
+   etcd — but no node-exporter, even though its DaemonSet was running. In
+   chart v4, scraping node-exporter is a *separate feature* (`hostMetrics:`),
+   not part of `clusterMetrics`. *Fix*: `hostMetrics.enabled: true`. Caught by
+   checking `prometheus_target_scrape_pool_targets` on Alloy's own :12345
+   metrics endpoint — worth doing after any chart change, since a missing
+   scrape pool produces no error anywhere.
