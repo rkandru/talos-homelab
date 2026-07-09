@@ -28,9 +28,13 @@ clusterMetrics:
     enabled: true
 
 # Scrapes node-exporter (deployed below). In chart v4 this is a separate
-# feature from clusterMetrics — without it node-exporter runs unscraped.
+# feature from clusterMetrics — without it node-exporter runs unscraped,
+# and the linuxHosts source must be enabled explicitly or the feature
+# renders empty.
 hostMetrics:
   enabled: true
+  linuxHosts:
+    enabled: true
 
 # v4 splits exporter *deployment* out from the scrape config above.
 telemetryServices:

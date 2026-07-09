@@ -122,7 +122,18 @@ session — rotate it when convenient.
    `telemetryServices:` map. The chart's own validation error message pointed
    at the new location. Rendering locally with `helm template` before pushing
    caught both this and issue 3 without touching the cluster.
-5. **node-exporter deployed but silently unscraped.** After the first sync,
+5. **Argo CD silently dropped the etcd Endpoints object.** The `monitoring`
+   app reported Synced/Healthy, but `kubectl get endpoints etcd-metrics`
+   returned NotFound — the app status showed
+   `ExcludedResourceWarning: Resource /Endpoints etcd-metrics is excluded in
+   the settings`. Argo CD's default `resource.exclusions` skips
+   Endpoints/EndpointSlice (they're normally controller-managed churn), which
+   breaks the selector-less-Service pattern for scraping node-local services.
+   *Fix*: override `configs.cm."resource.exclusions"` in `argocd/values.yaml`
+   with the default list minus the Endpoints block (Argo CD manages itself, so
+   this was just a git commit). Lesson: Synced/Healthy does not mean every
+   manifest applied — check for `ExcludedResourceWarning` conditions.
+6. **node-exporter deployed but silently unscraped.** After the first sync,
    Alloy's scrape pools showed apiserver/kubelet/cAdvisor/kube-state-metrics/
    etcd — but no node-exporter, even though its DaemonSet was running. In
    chart v4, scraping node-exporter is a *separate feature* (`hostMetrics:`),
