@@ -1,0 +1,53 @@
+# Grafana k8s-monitoring chart (v4) — deploys Grafana Alloy + exporters and
+# remote-writes to Grafana Cloud (stack: rahulkandru.grafana.net).
+# The write credential lives in the grafana-cloud-metrics Secret (NOT in git);
+# see MONITORING.md for how to (re)create it.
+
+cluster:
+  name: homelab
+
+destinations:
+  grafanaCloudMetrics:
+    type: prometheus
+    url: https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push
+    auth:
+      type: basic
+      usernameKey: username
+      passwordKey: password
+    secret:
+      create: false
+      name: grafana-cloud-metrics
+      namespace: monitoring
+
+# Kubernetes metrics: kubelet, cAdvisor, kube-state-metrics, node-exporter
+# (node-exporter doubles as the Talos "machine metrics" source — OneUptime's
+# node-level CPU/memory/disk/network recommendations all come from it).
+clusterMetrics:
+  enabled: true
+  apiServer:
+    enabled: true
+
+# v4 splits exporter *deployment* out from the scrape config above.
+telemetryServices:
+  kube-state-metrics:
+    deploy: true
+  node-exporter:
+    deploy: true
+    # Talos control-plane nodes are tainted; we want machine metrics from
+    # every node, control plane included.
+    tolerations:
+      - operator: Exists
+        effect: NoSchedule
+
+# Scrapes anything annotated k8s.grafana.com/scrape=true — used for the etcd
+# Service/Endpoints in manifests/monitoring/ (etcd is a Talos system service,
+# not a pod, so it can't be discovered any other way).
+annotationAutodiscovery:
+  enabled: true
+
+collectors:
+  alloy-metrics:
+    enabled: true
+    # Required by annotationAutodiscovery so scrape targets are sharded
+    # rather than duplicated if the collector ever scales beyond 1 replica.
+    presets: [clustered]

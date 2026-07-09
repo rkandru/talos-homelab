@@ -1,0 +1,39 @@
+# Grafana Cloud monitoring: Alloy + exporters (k8s-monitoring chart) plus the
+# etcd scrape target from manifests/monitoring/. Credentials come from the
+# grafana-cloud-metrics Secret, which is created by hand (see MONITORING.md)
+# and never committed.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: k8s-monitoring
+      targetRevision: 4.2.1
+      helm:
+        releaseName: monitoring
+        valueFiles:
+          - $values/monitoring/values.yaml
+    - repoURL: https://github.com/rkandru/talos-homelab.git
+      targetRevision: main
+      ref: values
+    - repoURL: https://github.com/rkandru/talos-homelab.git
+      targetRevision: main
+      path: manifests/monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    managedNamespaceMetadata:
+      labels:
+        # node-exporter needs hostPID + hostPath mounts, which the cluster-wide
+        # baseline Pod Security level forbids.
+        pod-security.kubernetes.io/enforce: privileged
