@@ -112,11 +112,12 @@ session — rotate it when convenient.
   `talos-homelab` (the leftover Docker Desktop sender squats on `homelab`).
 - **Explore** with the `grafanacloud-rahulkandru-prom` datasource; useful
   starters:
-  - `up{cluster="homelab"}` — every scrape target's liveness, in one query
-  - `etcd_disk_wal_fsync_duration_seconds{cluster="homelab"}` P99:
-    `histogram_quantile(0.99, sum(rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])) by (le))`
-  - `node_memory_MemAvailable_bytes{cluster="homelab"}`
-  - `increase(kube_pod_container_status_restarts_total{cluster="homelab"}[1h])`
+  - `up{cluster="talos-homelab"}` — every scrape target's liveness, in one query
+  - etcd WAL fsync P99:
+    `histogram_quantile(0.99, sum(rate(etcd_disk_wal_fsync_duration_seconds_bucket{cluster="talos-homelab"}[5m])) by (le))`
+  - `node_memory_MemAvailable_bytes{cluster="talos-homelab"}`
+  - `increase(kube_pod_container_status_restarts_total{cluster="talos-homelab"}[1h])`
+    (K8s toggle only)
 
 ## Issues hit during this setup & fixes
 
@@ -177,9 +178,16 @@ session — rotate it when convenient.
    brew-installed Alloy on the Mac itself pushing host metrics. *Resolution
    chosen*: keep the other senders, trim this cluster to Talos-only metrics
    (the toggle at the top of this file), and restart the Alloy pod to drop
-   the WAL backlog of buffered K8s samples. Lessons: `failed=0` doesn't mean
-   delivery is healthy (429s retry forever, silently); and check
+   the WAL backlog of buffered K8s samples. Refined root cause: steady-state
+   usage across all three senders is only ~8k series — the ceiling was hit by
+   **churn**: the initial full-K8s series set plus a mid-flight `cluster`
+   label rename each abandoned thousands of series that Mimir's active-series
+   tracker keeps counting for ~15–20 minutes. After the decay window,
+   Talos-only metrics fit with headroom. Lessons: `failed=0` doesn't mean
+   delivery is healthy (429s retry forever, silently — watch
+   `queue_highest_sent_timestamp` and `samples_retried_total` instead); check
    `count by (job) (up)` for *unexpected* senders before trusting a
-   shared-tenant stack. Beware the `desktop-*` cluster shares the
-   `cluster="homelab"` label — filter dashboards by `instance=~"homelab.*"`
-   or job where it matters.
+   shared-tenant stack; and batch label-schema changes, since every rename
+   double-counts your series for the decay window. The `desktop-*` cluster
+   squats on `cluster="homelab"`, which is why this cluster's label is
+   `talos-homelab`.
