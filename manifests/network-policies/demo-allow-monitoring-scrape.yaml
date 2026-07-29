@@ -1,0 +1,23 @@
+# Alloy (monitoring namespace) must scrape podinfo's metrics endpoint for the
+# SLO SLI — the default deny above blocks cross-namespace ingress, which
+# silently produced up=0 targets when podinfo scrape annotations were added
+# (discovered 2026-07-29, agentic phase-0 work).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-scrape
+  namespace: demo
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: podinfo
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9898
