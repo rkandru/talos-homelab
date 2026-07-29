@@ -15,6 +15,12 @@ spec:
       releaseName: podinfo
       valuesObject:
         replicaCount: 2
+        # Scraped by Alloy's annotation autodiscovery (monitoring app) —
+        # podinfo's HTTP metrics are the SLI source for its 99.95%
+        # availability SLO (see agentic-devops repo, grafana/alerts).
+        podAnnotations:
+          k8s.grafana.com/scrape: "true"
+          k8s.grafana.com/metrics.portNumber: "9898"
   destination:
     server: https://kubernetes.default.svc
     namespace: demo

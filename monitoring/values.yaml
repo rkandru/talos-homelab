@@ -23,18 +23,30 @@ destinations:
       namespace: monitoring
 
 # ============================================================
-# K8S METRICS TOGGLE — currently OFF to stay inside the Grafana
-# Cloud free-tier active-series limit (15k, shared with other
-# senders on this account). To re-enable Kubernetes metrics
-# (kubelet, cAdvisor, kube-state-metrics, API server):
-#   1. clusterMetrics.enabled: true
-#   2. telemetryServices.kube-state-metrics.deploy: true
-#   3. commit + push; Argo CD does the rest
+# K8S METRICS — partial re-enable (2026-07-29) for the agentic
+# phase-0 SLO work: kube-state-metrics ONLY (pod restarts, OOM,
+# replica drift — needed for crashloop alerts + Holmes context).
+# kubelet/cAdvisor/apiserver stay OFF: they are the series-heavy
+# sources, and the 15k active-series limit is shared with other
+# senders (see issue 7). Watch series usage after any change here.
+# The SLO's own signal comes from podinfo's app metrics via
+# annotation autodiscovery (annotations set in apps/podinfo.yaml),
+# not from cluster metrics.
 # ============================================================
 clusterMetrics:
-  enabled: false
+  enabled: true
+  kubelet:
+    enabled: false
+  kubeletResource:
+    enabled: false
+  cadvisor:
+    enabled: false
   apiServer:
+    enabled: false
+  kube-state-metrics:
     enabled: true
+    metricsTuning:
+      useDefaultAllowList: true
 
 # TALOS METRICS (always on): node-exporter machine metrics — OneUptime's
 # node-level CPU/memory/disk/network recommendations all come from it.
@@ -48,7 +60,7 @@ hostMetrics:
 # v4 splits exporter *deployment* out from the scrape config above.
 telemetryServices:
   kube-state-metrics:
-    deploy: false   # part of the K8s metrics toggle above
+    deploy: true    # part of the K8s metrics toggle above
 
   node-exporter:
     deploy: true
