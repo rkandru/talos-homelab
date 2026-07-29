@@ -1,0 +1,25 @@
+# Agentic DevOps platform (phase 0): Postgres + LiteLLM + network policies +
+# local-path storage, from the dedicated agentic-devops repo (PLAN.md there).
+# HolmesGPT itself is a separate Application (apps/holmes.yaml) since it's a
+# Helm chart, not raw manifests. Repo cred: repo-agentic-devops secret in the
+# argocd namespace (cloned imperatively from repo-talos-homelab).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agentic
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rkandru/agentic-devops.git
+    targetRevision: main
+    path: deploy/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agentic
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false   # namespace.yaml in the repo owns labels
