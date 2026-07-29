@@ -1,0 +1,19 @@
+# Synthetic load for the podinfo SLO (see manifests/demo-loadgen/).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-loadgen
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rkandru/talos-homelab.git
+    targetRevision: main
+    path: manifests/demo-loadgen
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

@@ -1,0 +1,36 @@
+# Synthetic traffic for podinfo — the 99.95% availability SLO needs a steady
+# request stream or the SLI ratio is undefined (0/0). ~2 req/s of normal GETs.
+# Incidents are induced manually (see agentic-devops docs/PHASE0-NOTES.md);
+# this generator never sends error-triggering requests itself.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loadgen
+  template:
+    metadata:
+      labels:
+        app: loadgen
+    spec:
+      containers:
+        - name: loadgen
+          image: curlimages/curl:8.14.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              while true; do
+                curl -s -o /dev/null --max-time 2 http://podinfo:9898/ || true
+                curl -s -o /dev/null --max-time 2 http://podinfo:9898/env || true
+                sleep 1
+              done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
