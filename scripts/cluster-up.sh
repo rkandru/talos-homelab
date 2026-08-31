@@ -9,13 +9,37 @@ CLUSTER_NAME="${CLUSTER_NAME:-homelab}"
 WORKERS="${WORKERS:-1}"
 CILIUM_VERSION="${CILIUM_VERSION:-1.19.5}"
 
+# SIZING — read before lowering these.
+#
+# These flags become hard Docker memory limits on the node containers. The trap:
+# each Talos node reports the DOCKER VM's total memory (~7.4Gi) as Kubernetes
+# `allocatable`, NOT its own container limit. So `kubectl describe node` shows
+# roughly 3x the memory that actually exists, and the scheduler will happily
+# place pods until the kubelet itself is starved — which presents as the node
+# going NotReady with "Kubelet stopped posting node status", not as an OOMKill.
+#
+# That happened on 2026-08-31 when Keycloak (1280Mi request) was deployed onto a
+# 2.5GiB worker that was already over-committed. See agentic-devops
+# docs/PLATFORM-BUILD-NOTES.md step 17.
+#
+# Budget: controlplane 2.5GiB + worker 4.5GiB = 7GiB inside an 8.2GB Docker
+# Desktop VM, leaving ~1.2GB for Docker itself. Raise the VM's memory in Docker
+# Desktop settings before raising these further.
+#
+# `docker stats` is the source of truth for real usage. `kubectl top` / node
+# allocatable are not.
+#
+# To resize a RUNNING cluster without recreating it (no state loss):
+#   docker update --memory 4.5g --memory-swap 4.5g homelab-worker-1
+#   docker update --memory 2.5g --memory-swap 2.5g homelab-controlplane-1
+# Then mirror the change here, or the next cluster-up.sh silently reverts it.
 talosctl cluster create docker \
   --name "${CLUSTER_NAME}" \
   --workers "${WORKERS}" \
   --cpus-controlplanes 2.0 \
-  --memory-controlplanes 2.0GiB \
+  --memory-controlplanes 2.5GiB \
   --cpus-workers 2.0 \
-  --memory-workers 2.5GiB \
+  --memory-workers 4.5GiB \
   --config-patch "@${REPO_ROOT}/talos/patches/cluster.yaml"
 
 # Credentials are secrets; keep them readable by this user only.
