@@ -1,0 +1,26 @@
+# The platform Gateway and its provisioning parameters, from the agentic-devops
+# repo. Split from apps/agentgateway.yaml (the upstream chart) for the same
+# reason Keycloak is split from its realm: the chart is upstream and changes
+# rarely, this is ours and changes often.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agentgateway-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-7"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rkandru/agentic-devops.git
+    targetRevision: main
+    path: deploy/agentgateway
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agentgateway-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
