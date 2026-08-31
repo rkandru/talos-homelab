@@ -47,6 +47,20 @@ spec:
             name: grafana-mcp-token
             key: GRAFANA_SA_TOKEN
         disableWrite: true
+        # Caller authentication. Without it the server logs, on every start:
+        #   "SECURITY: serving on a non-loopback address with NO caller
+        #    authentication. Anyone who can reach this address can invoke MCP
+        #    tools and use any Grafana credentials the server is configured
+        #    with. This will become a startup error in a future release."
+        # Cilium already restricts who can reach it, but that is one layer and
+        # the upstream is explicit that it intends to hard-fail on this. Callers
+        # (kagent's RemoteMCPServer, and the gateway) present it as a bearer
+        # token.
+        envValueFrom:
+          MCP_GRAFANA_SERVER_TOKEN:
+            secretKeyRef:
+              name: grafana-mcp-token
+              key: MCP_SERVER_TOKEN
         extraArgs:
           - -t
           - streamable-http
