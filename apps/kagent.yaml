@@ -1,0 +1,121 @@
+# kagent v0.9.12 — the agent runtime. Hosts BOTH agents this build exists to
+# compare: `holmes-investigator` (type: BYO, a container we did not write) and
+# `grafana-analyst` (type: Declarative, no image at all).
+#
+# READ THIS BEFORE RELAXING ANYTHING BELOW. kagent's OSS authorizer is
+# `NoopAuthorizer`, whose Check() unconditionally returns nil — in EVERY auth
+# mode, including trusted-proxy. Anyone who reaches the management API on :8083
+# is effectively admin over every watched namespace. Issue #1270 is open,
+# unassigned, and its own scope explicitly excludes namespace filtering, A2A
+# authz, and audit logging, so even shipping it would not make this
+# multi-tenant-safe.
+#
+# Every security control for kagent therefore comes from OUTSIDE kagent:
+#   Keycloak       identity
+#   agentgateway   authorization on the management API (CEL on method+path)
+#   Cilium         the L7 policy on agent->controller, which is the only thing
+#                  that stops the east-west escalation a north-south gateway
+#                  cannot see
+#   Kyverno        the kubectl-apply path the gateway never observes
+#   K8s RBAC       per-agent ServiceAccounts with zero write verbs
+#
+# Pinned to v0.9.12, NOT v0.10.0-rc: `main` is mid-migration from v1alpha2 to a
+# v1alpha3 "substrate" model and the rc line is churning weekly.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kagent
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: default
+  source:
+    repoURL: ghcr.io/kagent-dev/kagent/helm
+    chart: kagent
+    targetRevision: 0.9.12
+    helm:
+      releaseName: kagent
+      valuesObject:
+        providers:
+          default: anthropic
+          anthropic:
+            # Chart defaults already point at secret `kagent-anthropic` / key
+            # ANTHROPIC_API_KEY, which is exactly what bootstrap-secrets.sh
+            # creates. Only the model is overridden — the chart default is
+            # claude-haiku-4-5, and the analyst agent wants stronger reasoning.
+            model: claude-sonnet-5
+
+        database:
+          postgres:
+            # urlFile, not url: `url` is a plain values string and would put the
+            # database password in git. The file is a mounted Secret (below).
+            urlFile: /etc/kagent/db/url
+            bundled:
+              # The chart's bundled Postgres ships hardcoded kagent/kagent
+              # credentials and is marked dev-only upstream. Use the shared
+              # Postgres 17.5 instead.
+              enabled: false
+
+        rbac:
+          # Per-namespace Role/RoleBinding instead of the default cluster-scoped
+          # ClusterRole, and WATCH_NAMESPACES is derived from this list. This is
+          # a controller-REACH control, not a user-authz control — but with
+          # NoopAuthorizer in play, limiting reach is most of what is available.
+          namespaces: [kagent]
+
+        controller:
+          replicas: 1
+          auth:
+            # Gives authenticated identity in the logs via an oauth2-proxy in
+            # front. It does NOT authorize: NoopAuthorizer permits everything in
+            # this mode too. The value is an audit trail naming a real user
+            # instead of admin@kagent.dev.
+            mode: trusted-proxy
+            userIdClaim: sub
+          agentDeployment:
+            # Stamps a known label on EVERY agent pod. This is what the Wave 5
+            # L7 CiliumNetworkPolicy selects on. kagent-runtime.md open question
+            # 2 asks "what is the exact agent pod label for the Cilium endpoint
+            # selector?" — rather than discovering it, pin it.
+            podLabels:
+              kagent.dev/agent-pod: "true"
+          env:
+            # Suppress prompt/completion content in traces at the source. The
+            # research flags PII-in-traces as on-by-default; whether this
+            # actually reaches agent pods (as opposed to just the controller) is
+            # an open question to verify once traces are wired.
+            - name: OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
+              value: "false"
+          volumes:
+            - name: db-url
+              secret:
+                secretName: kagent-db-url
+          volumeMounts:
+            - name: db-url
+              mountPath: /etc/kagent/db
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+
+        ui:
+          replicas: 1
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kagent
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
