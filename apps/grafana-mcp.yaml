@@ -1,0 +1,71 @@
+# Self-hosted Grafana MCP server — the tool surface for the declarative
+# `grafana-analyst` agent, and the thing agentgateway applies per-tool CEL
+# authorization to. Self-hosted rather than Grafana Cloud's hosted /mcp endpoint
+# so the tool surface stays inside the cluster where the gateway can police it.
+#
+# THREE MANDATORY FLAGS THE CHART DOES NOT SET. Each fails silently — the pod
+# runs, and nothing can talk to it:
+#   -t streamable-http   The binary's default transport is STDIO. Without this
+#                        it never opens a socket, despite the chart exposing
+#                        port 8000 and naming it `mcp-http`.
+#   --address=0.0.0.0:8000
+#                        Default is localhost:8000. Bound to loopback inside the
+#                        pod's netns, it is unreachable from any other pod.
+#   --allowed-hosts=*    Default is loopback Host values only, so a request
+#                        arriving as grafana-mcp.agentic.svc.cluster.local:8000
+#                        is REJECTED on the Host header. Kubernetes httpGet
+#                        probes hit the same wall (they send Host: <pod-ip>).
+#
+# `*` is safe here specifically: Host-header filtering exists to stop DNS
+# rebinding against browser-reachable servers, and this pod is reachable only
+# from two labelled sources under Cilium default-deny. The network policy is the
+# real control; the Host check would add nothing and break Service DNS.
+#
+# disableWrite: true is a genuine second control — the MCP server itself refuses
+# write operations, independent of the Grafana token's own permissions and
+# independent of the agent's prompt. Defence in depth for a read-only agent.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana-mcp
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  project: default
+  source:
+    repoURL: https://grafana-community.github.io/helm-charts
+    chart: grafana-mcp
+    targetRevision: 0.22.0
+    helm:
+      releaseName: grafana-mcp
+      valuesObject:
+        replicas: 1
+        grafana:
+          url: https://rahulkandru.grafana.net
+          apiKeySecret:
+            name: grafana-mcp-token
+            key: GRAFANA_SA_TOKEN
+        disableWrite: true
+        extraArgs:
+          - -t
+          - streamable-http
+          - --address=0.0.0.0:8000
+          - --allowed-hosts=*
+        service:
+          port: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            memory: 192Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agentic
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
