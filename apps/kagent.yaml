@@ -102,6 +102,35 @@ spec:
             limits:
               memory: 512Mi
 
+        # DISABLE THE BUNDLED SAMPLE AGENTS. The chart enables ten Declarative
+        # agents by default (k8s, kgateway, istio, promql, observability,
+        # argo-rollouts, helm, and three cilium agents), each of which becomes
+        # its own Deployment on the `python` ADK runtime. Sixteen pods in this
+        # namespace would re-starve the worker that step 17 just rescued.
+        #
+        # They are also actively unhelpful here. This build exists to compare
+        # exactly two agents — one BYO, one Declarative — and ten unrelated ones
+        # with broad toolsets make both the memory budget and the security story
+        # harder to reason about. Each is a real agent with real tools.
+        k8s-agent: {enabled: false}
+        kgateway-agent: {enabled: false}
+        istio-agent: {enabled: false}
+        promql-agent: {enabled: false}
+        observability-agent: {enabled: false}
+        argo-rollouts-agent: {enabled: false}
+        helm-agent: {enabled: false}
+        cilium-policy-agent: {enabled: false}
+        cilium-manager-agent: {enabled: false}
+        cilium-debug-agent: {enabled: false}
+
+        # kagent bundles its own Grafana MCP server, pointed at an in-cluster
+        # `grafana.kagent:3000` that does not exist here. We run our own
+        # (apps/grafana-mcp.yaml) against Grafana Cloud, with caller auth and an
+        # egress allowlist. Two Grafana tool surfaces would make "which one is
+        # authorized?" ambiguous, which is the opposite of the point.
+        grafana-mcp: {enabled: false}
+        querydoc: {enabled: false}
+
         ui:
           replicas: 1
           resources:
