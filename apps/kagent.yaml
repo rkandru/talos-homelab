@@ -131,6 +131,55 @@ spec:
         grafana-mcp: {enabled: false}
         querydoc: {enabled: false}
 
+        # oauth2-proxy in front of the kagent UI. This is the path kagent's
+        # `trusted-proxy` mode is actually designed for: the proxy runs the
+        # browser OIDC flow against Keycloak and injects the Authorization
+        # header the controller then trusts.
+        #
+        # THE SAME ISSUER/REACHABILITY SPLIT AS THE GATEWAY (step 9), and here it
+        # needs OIDC discovery turned OFF to express it. Discovery would fetch
+        # everything from the issuer, which advertises `localhost:8081` — a URL
+        # only the human's browser can reach, not the pod. So each endpoint is
+        # set explicitly on the side that has to reach it:
+        #   login-url     browser-reachable  (localhost:8081)
+        #   redeem-url    pod-reachable      (Service DNS)
+        #   oidc-jwks-url pod-reachable      (Service DNS)
+        #   issuer        the value in the `iss` claim, used for validation only
+        oauth2-proxy:
+          enabled: true
+          config:
+            existingSecret: kagent-oauth2-proxy
+          extraEnv:
+            - name: OIDC_ISSUER_URL
+              value: "http://localhost:8081/realms/platform"
+            - name: OIDC_REDIRECT_URL
+              value: "http://localhost:8001/oauth2/callback"
+            - name: UPSTREAM_URL
+              value: "http://kagent-ui:8080"
+          extraArgs:
+            provider: oidc
+            skip-oidc-discovery: true
+            oidc-issuer-url: "$(OIDC_ISSUER_URL)"
+            login-url: "http://localhost:8081/realms/platform/protocol/openid-connect/auth"
+            redeem-url: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local/realms/platform/protocol/openid-connect/token"
+            oidc-jwks-url: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local/realms/platform/protocol/openid-connect/certs"
+            redirect-url: "$(OIDC_REDIRECT_URL)"
+            upstream: "$(UPSTREAM_URL)"
+            email-domain: "*"
+            pass-authorization-header: true
+            set-authorization-header: true
+            scope: "openid profile email groups"
+            # Lab is plain HTTP over a port-forward; a secure cookie would never
+            # be sent back and the login loop would never terminate. At DC this
+            # returns to true behind TLS.
+            cookie-secure: false
+            cookie-samesite: "lax"
+            skip-jwt-bearer-tokens: true
+            skip-auth-route: "^/(health|login)$"
+          resources:
+            requests: {cpu: 25m, memory: 64Mi}
+            limits: {memory: 128Mi}
+
         ui:
           replicas: 1
           resources:
