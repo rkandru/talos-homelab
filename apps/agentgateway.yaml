@@ -1,0 +1,59 @@
+# agentgateway v1.5.0 — the platform's protocol edge and, more importantly, its
+# ONLY real authorization layer.
+#
+# WHY IT MATTERS MORE THAN ITS POSITION IN THE DIAGRAM SUGGESTS: kagent's
+# open-source authorizer is `NoopAuthorizer`, whose Check() unconditionally
+# returns nil in EVERY auth mode — so an authenticated kagent-reader can still
+# DELETE an agent. agentgateway's CEL authorization applies to plain HTTP
+# routes, not just MCP, so it can enforce method+path rules against Keycloak
+# claims on exactly the surface kagent leaves open. That composition is the
+# single most consequential finding in the research
+# (platform-readiness.md §7, kagent-runtime.md §5.1).
+#
+# It does NOT close the east-west path: an agent pod calling the controller
+# directly on :8083 never traverses a north-south gateway. That is what the L7
+# CiliumNetworkPolicy in Wave 5 is for.
+#
+# Creates GatewayClass `agentgateway` (controller agentgateway.dev/agentgateway).
+# Verified before install that Cilium's own Gateway API support is DISABLED
+# (`enable-gateway-api` unset in cilium-config, absent from cilium/values.yaml)
+# and no GatewayClass existed — so there is no controller contention. This was
+# the top-ranked unknown in the research ("zero documented evidence either way").
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agentgateway
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-8"
+spec:
+  project: default
+  source:
+    repoURL: cr.agentgateway.dev
+    chart: charts/agentgateway
+    targetRevision: v1.5.0
+    helm:
+      releaseName: agentgateway
+      valuesObject:
+        # NOTE: `resources` is TOP-LEVEL in this chart, not under `controller`.
+        # Nesting it (the obvious guess) is silently ignored — Helm does not
+        # error on unrecognised values — so the pod would quietly keep the chart
+        # defaults. Verified against `helm show values` at v1.5.0.
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 384Mi
+        controller:
+          replicaCount: 1
+          logLevel: info
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agentgateway-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
