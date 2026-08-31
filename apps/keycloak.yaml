@@ -1,0 +1,140 @@
+# Keycloak 26.7.2 — the platform identity provider. Issues tokens for humans and
+# for per-agent OAuth clients; agentgateway validates those tokens and enforces
+# CEL authorization against their claims. It comes FIRST because, per
+# platform-readiness.md §4, nothing downstream can be hardened before it exists.
+#
+# CHART CHOICE: codecentric `keycloakx` 7.3.0 (appVersion 26.7.2), not the
+# official Keycloak Operator. The keycloak.md evaluation recommends the Operator
+# but its own open question 5 says "pick after trying both in lab" — for a
+# 2-node lab under ArgoCD the plain chart avoids CRD health-check and sync-wave
+# races (keycloak#24526, where the realm-import Job races the server CR) with no
+# lost capability. Realm content is managed by keycloak-config-cli either way,
+# since the Operator's KeycloakRealmImport CR is create-only and ignores updates.
+# Never the Bitnami chart — its free catalog ended 2025-08-28 and Keycloak is not
+# in the surviving "secure images" set.
+#
+# VERSION DISCIPLINE IS NOT OPTIONAL HERE: Keycloak ships 4 minors a year and
+# ONLY the latest minor receives security fixes. 26.7.2 (2026-08-19) fixed
+# CVE-2026-18963, an unauthenticated account takeover via the reset-credentials
+# flow, CVSS 9.1, patched by upstream the day after disclosure. Quarterly
+# upgrades are a standing commitment, not a nice-to-have.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  project: default
+  source:
+    repoURL: https://codecentric.github.io/helm-charts
+    chart: keycloakx
+    targetRevision: 7.3.0
+    helm:
+      releaseName: keycloak
+      valuesObject:
+        # The chart does NOT default a command; without this the image's
+        # entrypoint (kc.sh) runs with no subcommand and the container exits.
+        command:
+          - "/opt/keycloak/bin/kc.sh"
+          - "start"
+          - "--http-port=8080"
+
+        replicas: 1
+
+        http:
+          # The chart default is "/auth" for backwards compatibility with
+          # Keycloak <17. Leaving it would put every OIDC endpoint under /auth
+          # and make issuer URLs disagree with every integration doc written for
+          # modern Keycloak (ArgoCD, agentgateway, oauth2-proxy all assume no
+          # prefix). Set explicitly to "/".
+          relativePath: "/"
+
+        proxy:
+          enabled: true
+          mode: forwarded
+
+        # Shared Postgres in the agentic namespace. The `keycloak` database and
+        # role are created by postgres-bootstrap.yaml in the agentic-devops repo
+        # — NOT by this chart, and not by initdb (that volume is already
+        # initialized, so initdb hooks are permanently inert).
+        database:
+          vendor: postgres
+          hostname: postgres.agentic.svc.cluster.local
+          port: 5432
+          database: keycloak
+          username: keycloak
+          existingSecret: platform-db-credentials
+          existingSecretKey: KEYCLOAK_DB_PASSWORD
+
+        # Blocks startup until Postgres accepts TCP. Off by default in the
+        # chart; worth enabling because Keycloak's own failure mode when the DB
+        # is not yet up is a crash loop with a stack trace that blames Quarkus.
+        dbchecker:
+          enabled: true
+
+        extraEnv: |
+          # ISSUER vs REACHABILITY — the load-bearing lab decision.
+          #
+          # KC_HOSTNAME sets what Keycloak puts in the `iss` claim and in its
+          # discovery document. The lab has no ingress, so humans reach Keycloak
+          # by port-forward on localhost:8081 while in-cluster components reach
+          # it by Service DNS. Those cannot both be the hostname.
+          #
+          # Resolution: issue tokens as localhost:8081 so browser login and
+          # redirects work, and let agentgateway fetch JWKS over Service DNS.
+          # agentgateway's JWT policy takes `issuer` (a string match on the
+          # claim) and `jwks` (a URL it fetches) as INDEPENDENT fields, so the
+          # split is expressible:
+          #   issuer: http://localhost:8081/realms/platform
+          #   jwks:   http://keycloak-keycloakx-http.keycloak.svc.cluster.local/realms/platform/protocol/openid-connect/certs
+          #
+          # At DC this collapses back to one real hostname behind TLS, and
+          # KC_HOSTNAME_STRICT should go back to its default of true.
+          - name: KC_HOSTNAME
+            value: http://localhost:8081
+          - name: KC_HOSTNAME_STRICT
+            value: "false"
+          - name: KC_BOOTSTRAP_ADMIN_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: keycloak-admin
+                key: username
+          - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: keycloak-admin
+                key: password
+          # Single replica, so JGroups has nothing to discover. The chart still
+          # selects the jdbc-ping cache stack (Keycloak 26.1+ default, no
+          # multicast); this keeps its DB chatter minimal.
+          - name: JAVA_OPTS_APPEND
+            value: >-
+              -XX:MaxRAMPercentage=70
+
+        resources:
+          requests:
+            cpu: 200m
+            memory: 1280Mi
+          limits:
+            # Startup is the CPU-hungry moment and the sizing guide warns
+            # performance "dropped significantly when Pods were throttled" — a
+            # tight CPU limit here makes the startup probe flap rather than
+            # merely running slowly.
+            cpu: "2"
+            memory: 1792Mi
+
+        # Sessions are DB-persisted since Keycloak 26.0, so the pod is
+        # disposable and the Postgres backup scope is what actually matters.
+        serviceAccount:
+          create: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: keycloak
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

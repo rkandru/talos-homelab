@@ -1,0 +1,33 @@
+# Realm content for the Keycloak deployed by apps/keycloak.yaml, from the
+# agentic-devops repo (deploy/keycloak). Split from the server Application on
+# purpose: the server is an upstream Helm chart with no local content, while the
+# realm is entirely ours and changes far more often. Keeping them separate means
+# a realm edit does not re-diff the chart, and a chart upgrade cannot roll back
+# the realm.
+#
+# Ordering is handled inside the Job (KEYCLOAK_AVAILABILITYCHECK_ENABLED waits up
+# to 300s for the server) rather than by sync waves, because these are two
+# independent Applications and waves do not order across them.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rkandru/agentic-devops.git
+    targetRevision: main
+    path: deploy/keycloak
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: keycloak
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # apps/keycloak.yaml owns the namespace.
+      - CreateNamespace=false

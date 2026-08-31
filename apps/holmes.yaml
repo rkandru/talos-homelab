@@ -9,12 +9,15 @@
 #     blocked by CiliumNetworkPolicy as the enforced layer)
 #   - robusta toolset + account creation disabled (no Robusta SaaS)
 #   - CRD read permissions trimmed to Argo only
-#   - LLM access only via the in-cluster LiteLLM proxy (cost governance:
-#     dedicated virtual key with budget + rate limits, never the raw
-#     Anthropic key)
 #
-# Secrets (imperative): holmes-env with HOLMES_LLM_KEY (LiteLLM virtual key)
+# Secrets (imperative): holmes-env with ANTHROPIC_API_KEY (the model key — see
+# the modelList note on why this is no longer a budgeted LiteLLM virtual key)
 # and GRAFANA_SA_TOKEN (read-only Grafana access for the prometheus toolset).
+#
+# Holmes is also the backend for the A2A shim in the kagent namespace, which
+# fronts it as a kagent BYO agent. Holmes itself speaks no A2A — its API is
+# /api/chat — so the shim exists purely to satisfy kagent's BYO contract
+# ("serve the agent over the A2A protocol on port 8080").
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -67,9 +70,17 @@ spec:
           - holmes-env
         modelList:
           claude-sonnet-5:
-            model: openai/claude-sonnet-5
-            api_base: http://litellm.agentic.svc.cluster.local:4000/v1
-            api_key: "envRef:HOLMES_LLM_KEY"
+            # Direct to Anthropic. The LiteLLM proxy that used to sit here was
+            # removed 2026-08-31: it had never once started (35,981 failed
+            # container creations over 32 days — the `anthropic-api-key` Secret
+            # it waited on was never created), so this model was unreachable and
+            # Holmes has never actually completed an investigation.
+            #
+            # TRADE-OFF, recorded deliberately: this path now has no budget
+            # ceiling, no rate limit, and no spend ledger. The backstop is the
+            # spend cap on the Anthropic Console workspace that issued the key.
+            model: anthropic/claude-sonnet-5
+            api_key: "envRef:ANTHROPIC_API_KEY"
         additionalEnvVars:
           - name: MODEL
             value: claude-sonnet-5

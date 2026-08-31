@@ -1,0 +1,52 @@
+# Kubernetes Gateway API CRDs — a prerequisite for agentgateway, which is a
+# Gateway API implementation (own GatewayClass, own xDS, own CRDs) and will not
+# install without these. The cluster had none: `kubectl get gatewayclass`
+# returned "the server doesn't have a resource type", not an empty list.
+#
+# VERSION CONSTRAINT (record this before upgrading either side):
+#   agentgateway v1.5.x supports Gateway API 1.4 - 1.6 and Kubernetes 1.32 - 1.37.
+#   This cluster is Kubernetes 1.36. Gateway API is pinned to v1.6.1 — the latest
+#   patched release inside that window. Do not jump to Gateway API 1.7 without
+#   first checking agentgateway's version-support table.
+#
+# Beware the version collision: Gateway API v1.6.1 and agentgateway v1.5.0 are
+# unrelated projects whose release numbers happen to sit near each other.
+#
+# Synced straight from the upstream repo at a tag rather than vendored, unlike
+# local-path-provisioner: the standard channel is ~1 MB of generated CRDs with
+# no local modifications, so vendoring would add review noise and a manual
+# refresh step without buying anything.
+#
+# The standard channel at v1.6.1 covers GatewayClass, Gateway, HTTPRoute,
+# GRPCRoute, ReferenceGrant, ListenerSet, TCPRoute, TLSRoute, UDPRoute and
+# BackendTLSPolicy — everything this platform needs. The experimental channel is
+# not required.
+#
+# ServerSideApply is MANDATORY, not a preference: these CRD schemas exceed the
+# 262144-byte limit on the last-applied-configuration annotation that
+# client-side apply writes, so a normal sync fails with
+# "metadata.annotations: Too long".
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gateway-api-crds
+  namespace: argocd
+  annotations:
+    # Sync before anything that defines a Gateway/HTTPRoute, or those resources
+    # fail validation against CRDs that do not exist yet.
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kubernetes-sigs/gateway-api.git
+    targetRevision: v1.6.1
+    path: config/crd/standard
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
