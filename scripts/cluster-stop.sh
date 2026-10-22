@@ -10,5 +10,7 @@ if [ -z "${CONTAINERS}" ]; then
   echo "No running containers found for cluster '${CLUSTER_NAME}'." >&2
   exit 1
 fi
+# One container ID per word: the split is the point.
+# shellcheck disable=SC2086
 docker stop ${CONTAINERS}
 echo "Cluster '${CLUSTER_NAME}' stopped. Resume with scripts/cluster-start.sh"

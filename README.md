@@ -19,12 +19,14 @@ See [NOTES.md](NOTES.md) for how the cluster bootstraps under the hood
 
 ```
 scripts/            cluster lifecycle (up / down / stop / start)
+scripts/ci/         the CI gate (check.sh) and its tests
 talos/patches/      Talos machine-config patches (CNI none, kube-proxy off)
 cilium/values.yaml  Cilium Helm values (Talos-specific)
 argocd/values.yaml  Argo CD Helm values (port-forward only, no ingress)
 bootstrap/          root app-of-apps Application (applied once by hand)
 apps/               Argo CD Applications (cilium, argocd, network-policies, podinfo)
 manifests/          plain manifests synced by apps (network policies)
+.github/            CI workflow (the gate) and CODEOWNERS
 ```
 
 ## Daily use
@@ -116,6 +118,31 @@ Routine tasks, roughly in order of how often you'll need them:
   or `kubectl -n kube-system get pods -l k8s-app=cilium`.
 - **Reclaim disk** — after destroying clusters: `docker system prune` (careful:
   affects all Docker resources, not just Talos).
+
+## CI gate
+
+Every pull request and push to `main` runs `.github/workflows/ci.yaml`, whose
+`ci-gate` job runs `scripts/ci/check.sh`:
+
+| Stage | What it catches |
+|---|---|
+| `yamllint` | YAML that does not parse, plus the rules in `.yamllint.yaml` |
+| `kubeconform` | invalid objects under `apps/`, `bootstrap/`, `manifests/`, checked against Kubernetes 1.36 and CRD schemas (a misspelt Argo CD field fails, though Argo would silently ignore it) |
+| `helm` | `helm template` of every Helm-sourced Argo app with its real values: broken values files and values the chart's schema rejects |
+| `shellcheck` | every `*.sh` |
+
+Run it locally before pushing (`./scripts/ci/check.sh`, or one stage, e.g.
+`./scripts/ci/check.sh helm`). The tool versions are pinned in the workflow.
+After changing the gate itself, run `./scripts/ci/test-check.sh`, which feeds
+the gate one deliberately broken copy of the repo per case.
+
+This matters more here than in most repos: this is the Agent Factory's Pilot
+Repo (agentic-devops ADR 0010), and whatever merges to `main` is synced onto
+the cluster the factory runs on. `.github/CODEOWNERS` assigns the Protected
+Paths (kagent, agentgateway, Cilium, `bootstrap/`, `talos/`, and the gate
+itself) to the operator. Labels and branch protection are set by
+`agentic-devops/scripts/factory-repo-setup.sh rkandru/talos-homelab ci-gate`.
+Branch protection on a private repo needs GitHub Pro.
 
 ## Security posture
 

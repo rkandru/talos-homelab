@@ -8,6 +8,8 @@ if [ -z "${CONTAINERS}" ]; then
   echo "No stopped containers found for cluster '${CLUSTER_NAME}'." >&2
   exit 1
 fi
+# One container ID per word: the split is the point.
+# shellcheck disable=SC2086
 docker start ${CONTAINERS}
 
 echo "Waiting for Kubernetes API and nodes..."

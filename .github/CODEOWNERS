@@ -1,0 +1,27 @@
+# Protected Paths (agentic-devops ADR 0010). Anything merged here is
+# auto-synced onto the cluster the Agent Factory itself runs on, so these need
+# the operator's review. The factory's Dispatcher also refuses Submissions that
+# touch them; keep this list and the Factory Contract's Protected Paths equal.
+
+# The Agent Factory's own apps (none yet; reserved so adding one is covered).
+/apps/factory*.yaml          @rkandru
+
+# kagent. Installed by agentic-devops scripts/install-kagent.sh, not by Argo
+# CD, since 1.x; any kagent app added back here is still protected.
+/apps/kagent*.yaml           @rkandru
+
+# agentgateway, including the Gateway API CRDs it requires.
+/apps/agentgateway*.yaml     @rkandru
+/apps/gateway-api-crds.yaml  @rkandru
+
+# Cilium: the CNI and the network policy enforcer.
+/apps/cilium.yaml            @rkandru
+/cilium/                     @rkandru
+
+# Cluster bootstrap: the app-of-apps root and the Talos machine config.
+/bootstrap/                  @rkandru
+/talos/                      @rkandru
+
+# The gate itself: an agent must not be able to switch off its own CI.
+/.github/                    @rkandru
+/scripts/ci/                 @rkandru

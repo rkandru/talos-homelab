@@ -1,0 +1,70 @@
+# The CI gate: a required check on main (job name `ci-gate`). Everything merged
+# to main is auto-synced onto the cluster by Argo CD, so this runs the same
+# scripts/ci/check.sh you can run locally. Tool versions are pinned here, and
+# actions are pinned by commit.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  YAMLLINT_VERSION: "1.38.0"
+  HELM_VERSION: "v4.3.0"
+  KUBECONFORM_VERSION: "v0.8.0"
+  KUBECONFORM_SHA256: "9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883"
+  SHELLCHECK_VERSION: "v0.11.0"
+  SHELLCHECK_SHA256: "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198"
+
+jobs:
+  gate:
+    name: ci-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install yamllint (brings PyYAML for the helm stage)
+        run: pip install "yamllint==${YAMLLINT_VERSION}"
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install kubeconform and shellcheck
+        run: |
+          mkdir -p "${RUNNER_TEMP}/bin"
+          cd "${RUNNER_TEMP}"
+          curl -sSfLo kubeconform.tar.gz \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  kubeconform.tar.gz" | sha256sum -c -
+          tar -xzf kubeconform.tar.gz -C bin kubeconform
+          curl -sSfLo shellcheck.tar.xz \
+            "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          echo "${SHELLCHECK_SHA256}  shellcheck.tar.xz" | sha256sum -c -
+          tar -xJf shellcheck.tar.xz --strip-components=1 -C bin "shellcheck-${SHELLCHECK_VERSION}/shellcheck"
+          echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
+
+      # Schemas are fetched over HTTP on every run otherwise (minutes, not
+      # seconds). The key follows check.sh, which pins the schema versions.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ${{ runner.temp }}/kubeconform-cache
+          key: kubeconform-${{ hashFiles('scripts/ci/check.sh') }}
+
+      - name: Run the gate
+        env:
+          KUBECONFORM_CACHE: ${{ runner.temp }}/kubeconform-cache
+        run: ./scripts/ci/check.sh

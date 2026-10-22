@@ -1,0 +1,11 @@
+# yamllint config for the CI gate (scripts/ci/check.sh). The default rules
+# minus two that only fight this repo's style: long explanatory comments and
+# URLs, and single-document files without a leading "---".
+extends: default
+
+rules:
+  line-length: disable
+  document-start: disable
+  truthy:
+    # GitHub Actions' `on:` key is not a boolean.
+    check-keys: false
