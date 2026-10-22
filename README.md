@@ -56,11 +56,25 @@ helm upgrade --install argocd argo/argo-cd \
   --version 10.1.2 -n argocd --create-namespace -f argocd/values.yaml
 kubectl -n argocd apply -f <repo-credentials-secret>   # private repo access, see below
 kubectl apply -f bootstrap/root-app.yaml     # everything else syncs from git
+
+# kagent 1.x (not an Argo app; see below), from a checkout of agentic-devops:
+../agentic-devops/scripts/factory-secrets.sh
+../agentic-devops/scripts/install-kagent.sh
 ```
 
 The initial Argo CD install is manual because Argo CD can't manage itself into
 existence; afterwards `apps/argocd.yaml` adopts the release and upgrades are
 git commits.
+
+**kagent is installed by script, not by Argo CD.** kagent 1.0.0-alpha16 is
+four Helm releases (kagent, Agent Substrate, its CRDs and a pod-certificate
+controller) plus CA and JWT pools that its own CLI generates during install.
+So `agentic-devops/scripts/install-kagent.sh` runs the pinned `kagent install`
+from `agentic-devops/deploy/kagent-install/` instead. It is rerunnable. The
+kagent 0.9.12 Applications were removed from `apps/`: 0.x and 1.x cannot share
+a cluster, and Argo would otherwise restore 0.x on every rebuild. Substrate
+needs the pod-certificate feature gates on Kubernetes 1.36, which is why
+`talos/patches/cluster.yaml` sets them.
 
 ### Private repo access
 
@@ -88,7 +102,7 @@ lives in git, scale by recreating:
 ```sh
 ./scripts/cluster-down.sh
 WORKERS=2 ./scripts/cluster-up.sh
-# reinstall argocd + repo secret + root app (Bootstrap section above)
+# reinstall argocd + repo secret + root app + kagent (Bootstrap section above)
 ```
 
 ## Administration

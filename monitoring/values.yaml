@@ -35,6 +35,7 @@ destinations:
 # ============================================================
 clusterMetrics:
   enabled: true
+  collector: alloy-metrics
   kubelet:
     enabled: false
   kubeletResource:
@@ -54,6 +55,7 @@ clusterMetrics:
 # linuxHosts source must be enabled explicitly or the feature renders empty.
 hostMetrics:
   enabled: true
+  collector: alloy-metrics
   linuxHosts:
     enabled: true
 
@@ -75,6 +77,31 @@ telemetryServices:
 # not a pod, so it can't be discovered any other way).
 annotationAutodiscovery:
   enabled: true
+  collector: alloy-metrics
+
+# OTLP RECEIVER for kagent 1.x and Agent Substrate (agentic-devops
+# deploy/kagent-install/), which push telemetry rather than being scraped.
+# They send to monitoring-alloy-receiver.monitoring.svc:4317 (gRPC).
+#
+# Metrics only for now, into the same Grafana Cloud Mimir destination: traces
+# and logs need a destination of their own and a check that prompt content is
+# not captured, which is agentic-devops ticket 14. Watch active series after
+# enabling: the 15k limit is shared (see the K8S METRICS note above).
+applicationObservability:
+  enabled: true
+  collector: alloy-receiver
+  receivers:
+    otlp:
+      grpc:
+        enabled: true
+      http:
+        enabled: true
+  metrics:
+    enabled: true
+  traces:
+    enabled: false
+  logs:
+    enabled: false
 
 collectors:
   alloy-metrics:
@@ -82,3 +109,6 @@ collectors:
     # Required by annotationAutodiscovery so scrape targets are sharded
     # rather than duplicated if the collector ever scales beyond 1 replica.
     presets: [clustered]
+  # Now that there are two collectors, every feature above names its own.
+  alloy-receiver:
+    presets: [deployment]
