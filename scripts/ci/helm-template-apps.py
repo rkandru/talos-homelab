@@ -21,7 +21,7 @@ import tempfile
 import yaml  # PyYAML, installed alongside yamllint
 
 THIS_REPO = "https://github.com/rkandru/talos-homelab.git"
-KUBERNETES_VERSION = "1.36.1"
+KUBERNETES_VERSION = os.environ["KUBERNETES_VERSION"]  # set by check.sh
 
 
 def helm_sources(app):

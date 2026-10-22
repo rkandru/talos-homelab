@@ -33,7 +33,7 @@ stage_yamllint() {
 # Kubernetes schemas for the cluster's version, plus CRD schemas (Argo CD
 # Application, CiliumNetworkPolicy, ...) from a pinned commit of the
 # community CRDs catalog, so a catalog change cannot turn the gate red.
-KUBERNETES_VERSION="1.36.1"
+export KUBERNETES_VERSION="1.36.1"  # also read by helm-template-apps.py
 CRDS_CATALOG="https://raw.githubusercontent.com/datreeio/CRDs-catalog/501527ab9c40c827144c8f45945b25a023e344ce"
 
 stage_kubeconform() {

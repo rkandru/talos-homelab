@@ -1,7 +1,8 @@
 # Protected Paths (agentic-devops ADR 0010). Anything merged here is
 # auto-synced onto the cluster the Agent Factory itself runs on, so these need
-# the operator's review. The factory's Dispatcher also refuses Submissions that
-# touch them; keep this list and the Factory Contract's Protected Paths equal.
+# the operator's review. Once this repo has a Factory Contract (agentic-devops
+# ticket 16), its Protected Paths must equal this list, so that the
+# Dispatcher refuses Submissions that touch them, too.
 
 # The Agent Factory's own apps (none yet; reserved so adding one is covered).
 /apps/factory*.yaml          @rkandru
