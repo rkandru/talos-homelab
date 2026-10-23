@@ -7,12 +7,11 @@
 # The Agent Factory's own apps (none yet; reserved so adding one is covered).
 /apps/factory*.yaml          @rkandru
 
-# kagent. Installed by agentic-devops scripts/install-kagent.sh, not by Argo
-# CD, since 1.x; any kagent app added back here is still protected.
+# kagent is removed from the cluster; any kagent app added back here is still
+# protected.
 /apps/kagent*.yaml           @rkandru
 
-# agentgateway, including the Gateway API CRDs it requires.
-/apps/agentgateway*.yaml     @rkandru
+# Gateway API CRDs.
 /apps/gateway-api-crds.yaml  @rkandru
 
 # Cilium: the CNI and the network policy enforcer.
